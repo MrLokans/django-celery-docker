@@ -1,0 +1,63 @@
+version: '2'
+
+services:
+  database: 
+    image: postgres:9.4
+    env_file:
+      - ./env_files/db.env
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./pg-volumes/logs:/var/log/postgresql
+      - ./pg-volumes/config:/etc/postgresql
+      - ./pg-volumes/pgdata:/var/lib/postgresql/data
+
+  rabbitmq:
+    image: rabbitmq:3.6.0
+    env_file:
+      - ./env_files/rabbitmq.env
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+
+  redis:
+    image: redis
+
+  django-app:
+    build: .
+    command: ./run_app.sh
+    ports:
+      - "8000:8000"
+    depends_on:
+      - database
+    links:
+      - database
+      - rabbitmq
+      - redis
+    env_file:
+      - ./env_files/db.env
+      - ./env_files/rabbitmq.env
+    volumes:
+      - ./:/app
+    # For debugging
+    tty: true
+    stdin_open: true
+
+  celery-worker:
+    build: .
+    command: ./run_celery.sh
+    volumes:
+      - ./:/app
+    links:
+      - database  
+      - rabbitmq
+      - redis
+    depends_on:
+      - rabbitmq
+    env_file:
+      - ./env_files/db.env
+      - ./env_files/rabbitmq.env
+    # For debugging
+    tty: true
+    stdin_open: true
+
