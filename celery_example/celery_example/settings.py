@@ -12,6 +12,8 @@ https://docs.djangoproject.com/en/1.10/ref/settings/
 
 import os
 
+from kombu import Exchange, Queue
+
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -37,6 +39,10 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+
+    'celery_example',
+
+    'rest_framework',
 ]
 
 MIDDLEWARE = [
@@ -73,12 +79,6 @@ WSGI_APPLICATION = 'celery_example.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/1.10/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': os.path.join(BASE_DIR, 'db.sqlite3'),
-    }
-}
 
 
 # Password validation
@@ -118,3 +118,73 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/1.10/howto/static-files/
 
 STATIC_URL = '/static/'
+
+
+REST_FRAMEWORK = {  
+    'DEFAULT_PERMISSION_CLASSES': ('rest_framework.permissions.AllowAny',),
+    'PAGINATE_BY': 10
+}
+
+
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql_psycopg2',
+        'NAME': os.environ['POSTGRES_DB'],
+        'USER': os.environ['POSTGRES_USER'],
+        'PASSWORD': os.environ['POSTGRES_PASSWORD'],
+        'HOST': os.environ.get('DATABASE_HOST', 'database'),
+        'PORT': int(os.environ.get('DATABASE_PORT', '5432')),
+    }
+}
+
+REDIS_HOST = os.environ.get('REDIS_HOST', 'redis')
+REDIS_PORT = int(os.environ.get('REDIS_PORT', 6739))
+REDIS_DB = int(os.environ.get('REDIS_DB', 0))
+
+
+RABBIT_HOSTNAME = os.environ.get('RABBITMQ_HOST', 'rabbitmq')
+if RABBIT_HOSTNAME.startswith('tcp://'):
+    RABBIT_HOSTNAME = RABBIT_HOSTNAME.split('//')[1]
+
+BROKER_URL = os.environ.get('BROKER_URL')
+if not BROKER_URL:
+    BROKER_URL = 'amqp://{user}:{password}@{hostname}/{vhost}/'.format(
+        user=os.environ.get('RABBITMQ_DEFAULT_USER', 'admin'),
+        password=os.environ.get('RABBITMQ_DEFAULT_PASS', 'admin'),
+        hostname=RABBIT_HOSTNAME,
+        vhost=os.environ.get('RABBITMQ_ENV_VHOST', ''))
+
+
+BROKER_HEARTBEAT = '?heartbeat=30'
+if not BROKER_URL.endswith(BROKER_HEARTBEAT):
+    BROKER_URL += BROKER_HEARTBEAT
+
+
+BROKER_POOL_LIMIT = 1
+BROKER_CONNECTION_TIMEOUT = 10
+
+# configure queues, currently we have only one
+CELERY_DEFAULT_QUEUE = 'default'
+CELERY_QUEUES = (
+    Queue('default', Exchange('default'), routing_key='default'),
+)
+
+# Sensible settings for celery
+CELERY_ALWAYS_EAGER = False
+CELERY_ACKS_LATE = True
+CELERY_TASK_PUBLISH_RETRY = True
+CELERY_DISABLE_RATE_LIMITS = False
+
+CELERY_IGNORE_RESULT = True
+CELERY_SEND_TASK_ERROR_EMAILS = False
+CELERY_TASK_RESULT_EXPIRES = 600
+
+CELERY_RESULT_BACKEND = 'redis://%s:%d/%d' % (REDIS_HOST, REDIS_PORT, REDIS_DB)
+CELERY_REDIS_MAX_CONNECTIONS = 1
+
+CELERY_TASK_SERIALIZER = "json"
+CELERY_ACCEPT_CONTENT = ['application/json']
+
+CELERYD_HIJACK_ROOT_LOGGER = False
+CELERYD_PREFETCH_MULTIPLIER = 1
+CELERYD_MAX_TASKS_PER_CHILD = 1000
